@@ -110,6 +110,10 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Create plan and execute
 		Plan plan = manyFunctionsTest.getPlan();
+//		System.out.println(LocalExecutor.optimizerPlanAsJSON(plan));
+//		
+//		if(true) return;
+
 		JobExecutionResult result = LocalExecutor.execute(plan);
 
 		PrintWriter out = new PrintWriter(outputAccumulatorsPath);
@@ -118,7 +122,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 		out.println(result.getAccumulatorResult("count-rest-customers"));
 		out.close();
 
-		// KeylessReducer Test
+		// BEGIN: TEST 8
 		int counter = (Integer) result
 				.getAccumulatorResult("count-rest-customers");
 		Scanner scanner = new Scanner(new File(outputKeylessReducerPath2));
@@ -127,8 +131,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		if (counter != counter2)
 			throw new Exception(
-					"TEST 5 FAILED: Keyless Reducer and Accumulator count different");
-
+					"TEST 8 FAILED: Keyless Reducer and Accumulator count different");
+		// END: TEST 8
 	}
 
 	@Override
@@ -299,8 +303,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 				.builder(WorkSolutionSetJoin.class, IntValue.class, 0, 0)
 				.input1(iteration.getWorkset())
 				.input2(iteration.getSolutionSet()).build();
-		iterationInput.setParameter(PactCompiler.HINT_LOCAL_STRATEGY,
-				PactCompiler.HINT_LOCAL_STRATEGY_MERGE); //--> java.lang.UnsupportedOperationException
+		joinQuickFix(iterationInput);
 
 		// Pick one customer from working set
 		ReduceOperator oneCustomer = ReduceOperator
@@ -333,7 +336,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Extract only the customer keys
 		MapOperator customerKeysWithNoOrders = MapOperator
-				.builder(FilterCustomerKey.class)
+				.builder(FilterFirstFieldIntKey.class)
 				.input(filteredFlaggedSolutionSet).build();
 
 		// Save the customers without orders in file
@@ -349,8 +352,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Filter for customers keys of test 1
 		MapOperator allCustomerKeys = MapOperator
-				.builder(FilterCustomerKey.class).input(testCustomerIdentity1)
-				.build();
+				.builder(FilterFirstFieldIntKey.class)
+				.input(testCustomerIdentity1).build();
 
 		// Test if unionCustomers contains all customers again
 		CoGroupOperator testCustomerIdentity3 = CoGroupOperator
@@ -361,16 +364,16 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// BEGIN: TEST 4 - Usage of TextInputFormat
 
-		// get all order keys by joining with all customers that placed orders from previous test
+		// Get all order keys by joining with all customers that placed orders from previous test
 		JoinOperator allOrderKeys = JoinOperator
 				.builder(OrderKeysFromCustomerKeys.class, IntValue.class, 0, 1)
-				.input1(testCustomerIdentity2).input2(ordersSource).build();
+				.input1(testCustomerIdentity3).input2(ordersSource).build();
 
-		// get the string lines of the orders file
+		// Get the string lines of the orders file
 		FileDataSource ordersTextInputSource = new FileDataSource(
 				new TextInputFormat(), orders);
 
-		// extract order keys out of string lines
+		// Extract order keys out of string lines
 		MapOperator stringExtractKeys = MapOperator
 				.builder(ExtractKeysFromTextInput.class)
 				.input(ordersTextInputSource).build();
@@ -382,7 +385,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 		CsvOutputFormat.configureRecordFormat(test4Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
 
-		// test if extracted values are correct
+		// Test if extracted values are correct
 		CoGroupOperator testOrderIdentity = CoGroupOperator
 				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
 				.input1(allOrderKeys).input2(stringExtractKeys).build();
@@ -393,7 +396,27 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// extract orders from avro file
 		FileDataSource ordersAvroInputSource = new FileDataSource(
-				new AvroInputFormat(), orders);
+				new AvroInputFormat(), "file://"+ outputOrderAvroPath);
+
+		// Extract keys
+		MapOperator extractKeys = MapOperator
+				.builder(FilterFirstFieldIntKey.class)
+				.input(ordersAvroInputSource).build();
+
+		// Save the order keys in file
+		FileDataSink test5Sink = new FileDataSink(new CsvOutputFormat(),
+				outputTablePath + "/Test5.tbl");
+		test5Sink.addInput(extractKeys);
+		CsvOutputFormat.configureRecordFormat(test5Sink).recordDelimiter('\n')
+				.fieldDelimiter('|').field(IntValue.class, 0);
+
+		CoGroupOperator testOrderIdentity2 = CoGroupOperator
+				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
+				.input1(testOrderIdentity).input2(extractKeys).build();
+
+		// END: TEST 5
+
+		// BEGIN: TEST 6 - date count
 
 		// Count different order dates
 		MapOperator orderDateCountMap = MapOperator
@@ -404,42 +427,67 @@ public class ManyFunctions implements Program, ProgramDescription {
 		ReduceOperator orderDateCountReduce = ReduceOperator
 				.builder(OrderDateCountReduce.class).input(orderDateCountMap)
 				.build();
-		
-		
 
-		// END: TEST 5
+		// Save the orders in file
+		FileDataSink test6Sink = new FileDataSink(new CsvOutputFormat(),
+				outputTablePath + "/Test6.tbl");
+		test6Sink.addInput(orderDateCountReduce);
+		CsvOutputFormat.configureRecordFormat(test6Sink).recordDelimiter('\n')
+				.fieldDelimiter('|').field(StringValue.class, 0)
+				.field(IntValue.class, 1);
 
-		// FINAL DATA SINK
-		FileDataSink finalSink = new FileDataSink(new CsvOutputFormat(),
+		// do the same with the original orders file
+
+		// Count different order dates
+		MapOperator orderDateCountMap2 = MapOperator
+				.builder(OrderDateCountMap.class).input(ordersSource).build();
+
+		// Sum up
+		ReduceOperator orderDateCountReduce2 = ReduceOperator
+				.builder(OrderDateCountReduce.class).input(orderDateCountMap2)
+				.build();
+
+		// Check if date count is correct
+		CoGroupOperator testOrderIdentity3 = CoGroupOperator
+				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
+				.input1(orderDateCountReduce).input2(orderDateCountReduce2)
+				.build();
+
+		// END: TEST 6
+
+		// BEGIN: TEST 7
+
+		// Sum up counts
+		ReduceOperator sumUp = ReduceOperator.builder(SumUpDateCounts.class)
+				.input(testOrderIdentity3).build();
+
+		// Count all orders
+		ReduceOperator orderCount = ReduceOperator.builder(ReduceCounter.class)
+				.input(testOrderIdentity2).build();
+
+		// Check if the values are equal
+		CoGroupOperator testCountOrdersIdentity = CoGroupOperator
+				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
+				.input1(sumUp).input2(orderCount).build();
+
+		// Write count to disk
+		FileDataSink test7Sink = new FileDataSink(new CsvOutputFormat(),
 				outputTablePath + "/finalSink.tbl");
-		finalSink.addInput(testCustomerIdentity3);
-		CsvOutputFormat.configureRecordFormat(finalSink).recordDelimiter('\n')
+		test7Sink.addInput(testCountOrdersIdentity);
+		CsvOutputFormat.configureRecordFormat(test7Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
 
-		Plan p = new Plan(finalSink, "FullTest");
+		// END: TEST 7		
+
+		Plan p = new Plan(test7Sink, "FullTest");
 		p.addDataSink(test1Sink);
 		p.addDataSink(test2Sink);
 		p.addDataSink(test3Sink);
 		p.addDataSink(test4Sink);
+		p.addDataSink(test5Sink);
+		p.addDataSink(test6Sink);
 		return p;
 	}
-
-	//	private void connectAndCreateTables() {
-	//		try {
-	//            Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
-	//            conn = DriverManager.getConnection(dbURL);
-	//            createTable();
-	//            insertDataToSQLTables();
-	//            conn.close();
-	//        } catch (ClassNotFoundException e) {
-	//            e.printStackTrace();
-	//            Assert.fail();
-	//        } catch (SQLException e) {
-	//            e.printStackTrace();
-	//            Assert.fail();
-	//        }
-	//		
-	//	}
 
 	@Override
 	public String getDescription() {
@@ -707,7 +755,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 		@Override
 		public void map(Record record, Collector<Record> out) throws Exception {
 			String line = record.getField(0, StringValue.class).getValue();
-			Scanner s = new Scanner(line);
+			@SuppressWarnings("resource")
+			Scanner s = new Scanner(line).useDelimiter("\\|");
 			int orderKey = s.nextInt();
 			out.collect(new Record(new IntValue(orderKey)));
 			s.close();
@@ -743,7 +792,20 @@ public class ManyFunctions implements Program, ProgramDescription {
 			element.setField(1, new IntValue(sum));
 			out.collect(element);
 		}
+	}
 
+	// Sum up all date counts
+	public static class SumUpDateCounts extends ReduceFunction {
+
+		@Override
+		public void reduce(Iterator<Record> records, Collector<Record> out)
+				throws Exception {
+			int count = 0;
+			while (records.hasNext()) {
+				count += records.next().getField(1, IntValue.class).getValue();
+			}
+			out.collect(new Record(new IntValue(count)));
+		}
 	}
 
 	public static class WorkSolutionSetJoin extends JoinFunction {
@@ -829,7 +891,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
-	public static class FilterCustomerKey extends MapFunction {
+	public static class FilterFirstFieldIntKey extends MapFunction {
 
 		@Override
 		public void map(Record record, Collector<Record> out) throws Exception {
