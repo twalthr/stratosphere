@@ -116,4 +116,10 @@
 			</plugin>
 		</plugins>
 	</build>
+	<!-- <profiles>
+		<profile>
+			<id>buildTestjobJar</id>
+		</profile>
+		
+	</profiles>  -->
 </project>

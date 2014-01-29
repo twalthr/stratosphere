@@ -110,9 +110,6 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Create plan and execute
 		Plan plan = manyFunctionsTest.getPlan();
-//		System.out.println(LocalExecutor.optimizerPlanAsJSON(plan));
-//		
-//		if(true) return;
 
 		JobExecutionResult result = LocalExecutor.execute(plan);
 
@@ -286,7 +283,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// END: TEST 2
 
-		// BEGIN: TEST 3
+		// BEGIN: TEST 3 - Usage of Delta Iterations to determine customers woth no orders
 		DeltaIteration iteration = new DeltaIteration(0);
 		iteration.setMaximumNumberOfIterations(10000); // Exception otherwise
 
@@ -301,9 +298,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 		// Exception otherwise
 		JoinOperator iterationInput = JoinOperator
 				.builder(WorkSolutionSetJoin.class, IntValue.class, 0, 0)
-				.input1(iteration.getWorkset())
+				.name("JOIN ITERATION").input1(iteration.getWorkset())
 				.input2(iteration.getSolutionSet()).build();
-		joinQuickFix(iterationInput);
 
 		// Pick one customer from working set
 		ReduceOperator oneCustomer = ReduceOperator
@@ -347,7 +343,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 				.fieldDelimiter('|').field(IntValue.class, 0);
 
 		// Union all customers WITH orders from previous test with all customers WITHOUT orders
-		MapOperator unionCustomers = MapOperator.builder(UnionMapper.class)
+		MapOperator unionCustomers = MapOperator.builder(DummyMapper.class)
 				.input(customerKeysWithNoOrders, testCustomerIdentity2).build();
 
 		// Filter for customers keys of test 1
@@ -359,7 +355,6 @@ public class ManyFunctions implements Program, ProgramDescription {
 		CoGroupOperator testCustomerIdentity3 = CoGroupOperator
 				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
 				.input1(unionCustomers).input2(allCustomerKeys).build();
-
 		// END: TEST 3
 
 		// BEGIN: TEST 4 - Usage of TextInputFormat
@@ -396,7 +391,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// extract orders from avro file
 		FileDataSource ordersAvroInputSource = new FileDataSource(
-				new AvroInputFormat(), "file://"+ outputOrderAvroPath);
+				new AvroInputFormat(), "file://" + outputOrderAvroPath);
 
 		// Extract keys
 		MapOperator extractKeys = MapOperator
@@ -425,7 +420,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Sum up
 		ReduceOperator orderDateCountReduce = ReduceOperator
-				.builder(OrderDateCountReduce.class).input(orderDateCountMap)
+				.builder(OrderDateCountReduce.class)
+				.keyField(StringValue.class, 0).input(orderDateCountMap)
 				.build();
 
 		// Save the orders in file
@@ -444,13 +440,14 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Sum up
 		ReduceOperator orderDateCountReduce2 = ReduceOperator
-				.builder(OrderDateCountReduce.class).input(orderDateCountMap2)
+				.builder(OrderDateCountReduce.class)
+				.keyField(StringValue.class, 0).input(orderDateCountMap2)
 				.build();
 
 		// Check if date count is correct
 		CoGroupOperator testOrderIdentity3 = CoGroupOperator
-				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
-				.input1(orderDateCountReduce).input2(orderDateCountReduce2)
+				.builder(CoGroupTestIdentity.class, StringValue.class, 0, 0)
+				.name("testOrderIdentity3").input1(orderDateCountReduce).input2(orderDateCountReduce2)
 				.build();
 
 		// END: TEST 6
@@ -467,12 +464,12 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Check if the values are equal
 		CoGroupOperator testCountOrdersIdentity = CoGroupOperator
-				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
+				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0).name("testCountOrdersIdentity")
 				.input1(sumUp).input2(orderCount).build();
 
 		// Write count to disk
 		FileDataSink test7Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/finalSink.tbl");
+				outputTablePath + "/Test7.tbl");
 		test7Sink.addInput(testCountOrdersIdentity);
 		CsvOutputFormat.configureRecordFormat(test7Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -486,6 +483,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 		p.addDataSink(test4Sink);
 		p.addDataSink(test5Sink);
 		p.addDataSink(test6Sink);
+		p.addDataSink(resultKR);
 		return p;
 	}
 
@@ -733,7 +731,6 @@ public class ManyFunctions implements Program, ProgramDescription {
 				records.next();
 				counter++;
 			}
-
 			out.collect(new Record(new IntValue(counter)));
 		}
 
@@ -808,6 +805,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 		}
 	}
 
+	// Join which directly outputs the Workset (only necessary to fulfill iteration constraints)
 	public static class WorkSolutionSetJoin extends JoinFunction {
 
 		@Override
@@ -818,6 +816,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
+	// Outputs the first record of the input stream
 	public static class PickOneRecord extends ReduceFunction {
 
 		@Override
@@ -826,10 +825,13 @@ public class ManyFunctions implements Program, ProgramDescription {
 			if (records.hasNext()) {
 				out.collect(records.next());
 			}
+			while (records.hasNext())
+				records.next();
 		}
 
 	}
 
+	// Returns only Customers that have no matching Order
 	public static class CustomersWithNoOrders extends CoGroupFunction {
 
 		@Override
@@ -844,6 +846,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
+	// Adds a flag field to each record.
 	public static class AddFlag extends MapFunction {
 
 		@Override
@@ -854,6 +857,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
+	// Sets the last (Boolean) flag to "true".
 	public static class SetFlag extends MapFunction {
 
 		@Override
@@ -864,13 +868,13 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
+	// Only return customers that are not in input2
 	public static class RemoveCheckedCustomer extends CoGroupFunction {
 
 		@Override
 		public void coGroup(Iterator<Record> workingSet,
 				Iterator<Record> checkedCustomer, Collector<Record> out)
 				throws Exception {
-			// only add records to the collector if they are no
 			if (!checkedCustomer.hasNext()) {
 				while (workingSet.hasNext())
 					out.collect(workingSet.next());
@@ -879,6 +883,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
+	// Returns all customers with set flag
 	public static class FilterFlaggedCustomers extends MapFunction {
 
 		@Override
@@ -891,6 +896,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	}
 
+	// Returns only the first integer field as record
 	public static class FilterFirstFieldIntKey extends MapFunction {
 
 		@Override
@@ -899,7 +905,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 		}
 	}
 
-	public static class UnionMapper extends MapFunction {
+	// Dummy mapper. For testing purposes.
+	public static class DummyMapper extends MapFunction {
 
 		@Override
 		public void map(Record record, Collector<Record> out) throws Exception {
