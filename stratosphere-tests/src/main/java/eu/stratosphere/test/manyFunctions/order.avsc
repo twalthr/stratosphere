@@ -1,5 +1,5 @@
 
-{"namespace": "eu.stratosphere.test.testPrograms.manyFunctions",
+{"namespace": "eu.stratosphere.test.manyFunctions",
  "type": "record",
  "name": "Order",
  "fields": [

@@ -1,4 +1,4 @@
-package eu.stratosphere.test.testPrograms.manyFunctions;
+package eu.stratosphere.test.manyFunctions;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -41,6 +41,7 @@ import eu.stratosphere.types.IntValue;
 import eu.stratosphere.types.Record;
 import eu.stratosphere.types.StringValue;
 import eu.stratosphere.util.Collector;
+import eu.stratosphere.test.manyFunctions.Order;
 
 public class ManyFunctions implements Program, ProgramDescription {
 
@@ -48,36 +49,46 @@ public class ManyFunctions implements Program, ProgramDescription {
 	public static String lineitem;
 	public static String nation;
 	public static String orders;
-	public static String ordersPath;
 	public static String region;
-	public static String outputTablePath;
+	public static String orderAvroFile;
+	public static String outputTableDirectory;
 	public static String outputAccumulatorsPath;
-	public static String outputKeylessReducerPath;
 	public static String outputKeylessReducerPath2;
 	public static String outputOrderKeysPath;
 	public static String outputOrderAvroPath;
+	public static String ordersPath;
 
 	public static void main(String[] args) throws Exception {
 
 		ManyFunctions manyFunctionsTest = new ManyFunctions();
 
-		if (args.length < 9) {
+		// generate only avro file
+		if (args.length == 2) {
+			ordersPath = args[0];
+			outputOrderAvroPath = args[1];
+		}
+		// for testing purposes
+		// path = standard java File path
+		else if (args.length >= 11) {
+			customer = args[0];
+			lineitem = args[1];
+			nation = args[2];
+			orders = args[3];
+			region = args[4];
+			orderAvroFile = args[5];
+			outputTableDirectory = args[6];
+			// paths (without file:// or hdfs://)
+			ordersPath = args[7];
+			outputAccumulatorsPath = args[8];
+			outputKeylessReducerPath2 = args[9];
+			outputOrderKeysPath = args[10];
+			outputOrderAvroPath = args[11];
+		}
+		// error
+		else {
 			System.err.println(manyFunctionsTest.getDescription());
 			System.exit(1);
 		}
-
-		customer = args[0];
-		lineitem = args[1];
-		nation = args[2];
-		orders = args[3];
-		ordersPath = args[4];
-		region = args[5];
-		outputTablePath = args[6];
-		outputAccumulatorsPath = args[7];
-		outputKeylessReducerPath = args[8];
-		outputKeylessReducerPath2 = args[9];
-		outputOrderKeysPath = args[10];
-		outputOrderAvroPath = args[11];
 
 		// Generate file for avro test
 		DatumWriter<Order> orderDatumWriter = new SpecificDatumWriter<Order>(
@@ -134,6 +145,19 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	@Override
 	public Plan getPlan(String... args) {
+
+		if (args.length < 7) {
+			this.getDescription();
+			return null;
+		}
+
+		customer = args[0];
+		lineitem = args[1];
+		nation = args[2];
+		orders = args[3];
+		region = args[4];
+		orderAvroFile = args[5];
+		outputTableDirectory = args[6];
 
 		// Read TPC-H data from .tbl-files		
 		// (supplier, part and partsupp not implemented yet)
@@ -215,7 +239,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save keyless reducer results
 		FileDataSink resultKR = new FileDataSink(new CsvOutputFormat(),
-				outputKeylessReducerPath);
+				outputTableDirectory + "/KeylessReducer.tbl");
 		resultKR.addInput(countCustomersOfOtherRegion);
 		CsvOutputFormat.configureRecordFormat(resultKR).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -228,7 +252,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save test results to disk
 		FileDataSink test1Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test1.tbl");
+				outputTableDirectory + "/Test1.tbl");
 		test1Sink.addInput(unionOfRegions);
 		CsvOutputFormat.configureRecordFormat(test1Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0)
@@ -271,7 +295,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save test results to disk
 		FileDataSink test2Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test2.tbl");
+				outputTableDirectory + "/Test2.tbl");
 		test2Sink.addInput(removeDuplicates2);
 		CsvOutputFormat.configureRecordFormat(test2Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -337,7 +361,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save the customers without orders in file
 		FileDataSink test3Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test3.tbl");
+				outputTableDirectory + "/Test3.tbl");
 		test3Sink.addInput(customerKeysWithNoOrders);
 		CsvOutputFormat.configureRecordFormat(test3Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -375,7 +399,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save the orders in file
 		FileDataSink test4Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test4.tbl");
+				outputTableDirectory + "/Test4.tbl");
 		test4Sink.addInput(stringExtractKeys);
 		CsvOutputFormat.configureRecordFormat(test4Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -391,7 +415,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// extract orders from avro file
 		FileDataSource ordersAvroInputSource = new FileDataSource(
-				new AvroInputFormat(), "file://" + outputOrderAvroPath);
+				new AvroInputFormat(), orderAvroFile);
 
 		// Extract keys
 		MapOperator extractKeys = MapOperator
@@ -400,7 +424,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save the order keys in file
 		FileDataSink test5Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test5.tbl");
+				outputTableDirectory + "/Test5.tbl");
 		test5Sink.addInput(extractKeys);
 		CsvOutputFormat.configureRecordFormat(test5Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -426,7 +450,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Save the orders in file
 		FileDataSink test6Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test6.tbl");
+				outputTableDirectory + "/Test6.tbl");
 		test6Sink.addInput(orderDateCountReduce);
 		CsvOutputFormat.configureRecordFormat(test6Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(StringValue.class, 0)
@@ -447,8 +471,8 @@ public class ManyFunctions implements Program, ProgramDescription {
 		// Check if date count is correct
 		CoGroupOperator testOrderIdentity3 = CoGroupOperator
 				.builder(CoGroupTestIdentity.class, StringValue.class, 0, 0)
-				.name("testOrderIdentity3").input1(orderDateCountReduce).input2(orderDateCountReduce2)
-				.build();
+				.name("testOrderIdentity3").input1(orderDateCountReduce)
+				.input2(orderDateCountReduce2).build();
 
 		// END: TEST 6
 
@@ -464,12 +488,13 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 		// Check if the values are equal
 		CoGroupOperator testCountOrdersIdentity = CoGroupOperator
-				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0).name("testCountOrdersIdentity")
-				.input1(sumUp).input2(orderCount).build();
+				.builder(CoGroupTestIdentity.class, IntValue.class, 0, 0)
+				.name("testCountOrdersIdentity").input1(sumUp)
+				.input2(orderCount).build();
 
 		// Write count to disk
 		FileDataSink test7Sink = new FileDataSink(new CsvOutputFormat(),
-				outputTablePath + "/Test7.tbl");
+				outputTableDirectory + "/Test7.tbl");
 		test7Sink.addInput(testCountOrdersIdentity);
 		CsvOutputFormat.configureRecordFormat(test7Sink).recordDelimiter('\n')
 				.fieldDelimiter('|').field(IntValue.class, 0);
@@ -489,7 +514,7 @@ public class ManyFunctions implements Program, ProgramDescription {
 
 	@Override
 	public String getDescription() {
-		return "Parameters: [customer] [lineitem] [nation] [orders] [region] [output]";
+		return "Parameters: [customer] [lineitem] [nation] [orders] [region] [orderAvroFile] [outputTableDirectory]";
 	}
 
 	// Quick fix for Join bug
