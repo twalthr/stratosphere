@@ -415,10 +415,17 @@ public abstract class SingleInputNode extends OptimizerNode {
 	public void computeUnclosedBranchStack() {
 		if (this.openBranches != null) {
 			return;
-		}
+		}		
 
-		addClosedBranches(getPredecessorNode().closedBranchingNodes);
-		this.openBranches = getPredecessorNode().getBranchesForParent(this.inConn);
+		addClosedBranches(getPredecessorNode().closedBranchingNodes);		
+		
+		List<List<UnclosedBranchDescriptor>> broadcastBranchLists = computeBroadcastUnclosedBranchLists();		
+		broadcastBranchLists.add(getPredecessorNode().getBranchesForParent(this.inConn));
+		
+		ArrayList<UnclosedBranchDescriptor> result = new ArrayList<OptimizerNode.UnclosedBranchDescriptor>();
+		mergeLists(broadcastBranchLists, result);		
+				
+		this.openBranches = result.isEmpty() ? Collections.<UnclosedBranchDescriptor>emptyList() : result;
 	}
 	
 	// --------------------------------------------------------------------------------------------

@@ -1117,7 +1117,22 @@ public abstract class OptimizerNode implements Visitable<OptimizerNode>, Estimat
 	// --------------------------------------------------------------------------------------------
 	//                       Handling of branches
 	// --------------------------------------------------------------------------------------------
-
+	
+	// TODO
+	public List<List<UnclosedBranchDescriptor>> computeBroadcastUnclosedBranchLists() {
+		List<List<UnclosedBranchDescriptor>> results = new ArrayList<List<UnclosedBranchDescriptor>>();
+		
+		for (PactConnection conn : getBroadcastConnections()) {
+			OptimizerNode broadcastSource = conn.getSource();
+			
+			addClosedBranches(broadcastSource.closedBranchingNodes);
+			
+			results.add(broadcastSource.getBranchesForParent(conn));
+		}
+		
+		return results;
+	}
+	
 	public boolean hasUnclosedBranches() {
 		return this.openBranches != null && !this.openBranches.isEmpty();
 	}
@@ -1236,18 +1251,33 @@ public abstract class OptimizerNode implements Visitable<OptimizerNode>, Estimat
 		this.closedBranchingNodes.add(alreadyClosed);
 	}
 	
+	protected final boolean mergeLists(List<List<UnclosedBranchDescriptor>> childrenOpenLists, List<UnclosedBranchDescriptor> result) {
+		boolean didCloseABranch = false;
+		List<UnclosedBranchDescriptor> intermediateResult = null;
+		
+		for (List<UnclosedBranchDescriptor> childOpen : childrenOpenLists) {
+			// remove branches which have already been closed
+			removeClosedBranches(childOpen);
+
+			// merge intermediate results
+			List<UnclosedBranchDescriptor> mergeResult = new ArrayList<OptimizerNode.UnclosedBranchDescriptor>();
+			didCloseABranch |= mergeTwoLists(intermediateResult, childOpen, mergeResult);
+			intermediateResult = mergeResult;
+		}
+		
+		// add intermediate result to result list
+		for(UnclosedBranchDescriptor ubd : intermediateResult) {
+			result.add(ubd);
+		}
+
+		return didCloseABranch;
+	}
+	
 	/**
 	 * The node IDs are assigned in graph-traversal order (pre-order), hence, each list is sorted by ID in ascending order and
 	 * all consecutive lists start with IDs in ascending order.
 	 */
-	protected final boolean mergeLists(List<UnclosedBranchDescriptor> child1open, List<UnclosedBranchDescriptor> child2open, List<UnclosedBranchDescriptor> result) {
-
-		//remove branches which have already been closed
-		removeClosedBranches(child1open);
-		removeClosedBranches(child2open);
-		
-		result.clear();
-		
+	private final boolean mergeTwoLists(List<UnclosedBranchDescriptor> child1open, List<UnclosedBranchDescriptor> child2open, List<UnclosedBranchDescriptor> result) {		
 		// check how many open branches we have. the cases:
 		// 1) if both are null or empty, the result is null
 		// 2) if one side is null (or empty), the result is the other side.

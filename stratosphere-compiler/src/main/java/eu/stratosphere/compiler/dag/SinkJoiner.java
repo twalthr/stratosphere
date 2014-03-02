@@ -72,11 +72,12 @@ public class SinkJoiner extends TwoInputNode {
 		}
 		
 		// copy the lists and merge
-		List<UnclosedBranchDescriptor> result1 = new ArrayList<UnclosedBranchDescriptor>(pred1branches);
-		List<UnclosedBranchDescriptor> result2 = new ArrayList<UnclosedBranchDescriptor>(pred2branches);
-		
-		ArrayList<UnclosedBranchDescriptor> result = new ArrayList<UnclosedBranchDescriptor>();
-		mergeLists(result1, result2, result);
+		List<List<UnclosedBranchDescriptor>> broadcastBranchLists = computeBroadcastUnclosedBranchLists();
+		broadcastBranchLists.add(pred1branches);
+		broadcastBranchLists.add(pred2branches);
+
+		ArrayList<UnclosedBranchDescriptor> result = new ArrayList<OptimizerNode.UnclosedBranchDescriptor>();
+		mergeLists(broadcastBranchLists, result);
 		
 //		if (!didCloseSomeBranch) {
 //			// if the sink joiners do not close branches, then we have disjoint data flows.

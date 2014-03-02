@@ -13,6 +13,10 @@
 
 package eu.stratosphere.compiler.dag;
 
+import static eu.stratosphere.compiler.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE;
+import static eu.stratosphere.compiler.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE_AND_DAM;
+import static eu.stratosphere.compiler.plan.PlanNode.SourceAndDamReport.NOT_FOUND;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -53,8 +57,6 @@ import eu.stratosphere.pact.runtime.task.DamBehavior;
 import eu.stratosphere.pact.runtime.task.DriverStrategy;
 import eu.stratosphere.pact.runtime.task.util.LocalStrategy;
 import eu.stratosphere.util.Visitor;
-
-import static eu.stratosphere.compiler.plan.PlanNode.SourceAndDamReport.*;
 
 /**
  * A node in the optimizer plan that represents a PACT with a two different inputs, such as MATCH or CROSS.
@@ -654,13 +656,15 @@ public abstract class TwoInputNode extends OptimizerNode {
 		}
 
 		addClosedBranches(getFirstPredecessorNode().closedBranchingNodes);
-		addClosedBranches(getSecondPredecessorNode().closedBranchingNodes);
+		addClosedBranches(getSecondPredecessorNode().closedBranchingNodes);		
 		
-		List<UnclosedBranchDescriptor> result1 = getFirstPredecessorNode().getBranchesForParent(getFirstIncomingConnection());
-		List<UnclosedBranchDescriptor> result2 = getSecondPredecessorNode().getBranchesForParent(getSecondIncomingConnection());
-
-		ArrayList<UnclosedBranchDescriptor> result = new ArrayList<UnclosedBranchDescriptor>();
-		mergeLists(result1, result2, result);
+		List<List<UnclosedBranchDescriptor>> broadcastBranchLists = computeBroadcastUnclosedBranchLists();		
+		broadcastBranchLists.add(getFirstPredecessorNode().getBranchesForParent(this.input1));
+		broadcastBranchLists.add(getSecondPredecessorNode().getBranchesForParent(this.input2));
+		
+		ArrayList<UnclosedBranchDescriptor> result = new ArrayList<OptimizerNode.UnclosedBranchDescriptor>();
+		mergeLists(broadcastBranchLists, result);		
+				
 		this.openBranches = result.isEmpty() ? Collections.<UnclosedBranchDescriptor>emptyList() : result;
 	}
 
