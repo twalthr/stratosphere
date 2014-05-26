@@ -1306,38 +1306,15 @@ public class TypeExtractorTest {
 		}
 	}
 	
-	public static class DummyFlatMapFunction<A,B,C,D> extends FlatMapFunction<Tuple2<A,B>, Tuple2<C,D>> {
-		private static final long serialVersionUID = 1L;
-
-		@Override
-		public void flatMap(Tuple2<A, B> value, Collector<Tuple2<C, D>> out) throws Exception {
-			
-		}
-		
-	}
-	
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	@Test
-	public void testTypeErasureException() {
-		try {
-			TypeExtractor.getFlatMapReturnTypes(new DummyFlatMapFunction<String, Integer, String, Boolean>(), 
-					(TypeInformation) TypeInformation.parse("Tuple2<String, Integer>"));
-			Assert.fail("exception expected");
-		}
-		catch (InvalidTypesException e) {
-			// right
-		}
-	}
-	
 	public static class MyQueryableMapper<A> extends MapFunction<String, A> implements ResultTypeQueryable<A> {
 		private static final long serialVersionUID = 1L;
-
+		
 		@SuppressWarnings("unchecked")
 		@Override
 		public TypeInformation<A> getProducedType() {
 			return (TypeInformation<A>) BasicTypeInfo.INT_TYPE_INFO;
 		}
-
+		
 		@Override
 		public A map(String value) throws Exception {
 			return null;

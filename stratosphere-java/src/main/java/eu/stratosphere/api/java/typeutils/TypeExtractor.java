@@ -445,11 +445,9 @@ public class TypeExtractor {
 					
 					// variable could not be determined
 					if (tupleSubTypes[i] == null) {
-						throw new InvalidTypesException("Type of TypeVariable '" + ((TypeVariable<?>) subtypes[i]).getName() + "' in '"
-								+ ((TypeVariable<?>) subtypes[i]).getGenericDeclaration()
-								+ "' could not be determined. This is most likely a type erasure problem."
-								+ "The type extraction currently supports types with generic variables only in cases where "
-								+ "all variables in the return type can be deduced from the input type(s).");
+						throw new InvalidTypesException("Type of TypeVariable '" + ((TypeVariable<?>) t).getName() + "' in '"
+								+ ((TypeVariable<?>) t).getGenericDeclaration()
+								+ "' could not be determined. This is most likely a type erasure problem.");
 					}
 				} else {
 					tupleSubTypes[i] = createTypeInfoWithTypeHierarchy(new ArrayList<Type>(typeHierarchy), subtypes[i], in1Type, in2Type);
@@ -483,7 +481,7 @@ public class TypeExtractor {
 					return typeInfo;
 				} else {
 					throw new InvalidTypesException("Type of TypeVariable '" + ((TypeVariable<?>) t).getName() + "' in '"
-							+ ((TypeVariable<?>) t).getGenericDeclaration() + "' could not be determined. This is most likely a type erasure problem."
+							+ ((TypeVariable<?>) t).getGenericDeclaration() + "' could not be determined. "
 							+ "The type extraction currently supports types with generic variables only in cases where "
 							+ "all variables in the return type can be deduced from the input type(s).");
 				}
